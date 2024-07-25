@@ -1,11 +1,9 @@
-# client/Dockerfile
-
-FROM python:3.8-slim
+FROM python:3.9-slim
 
 WORKDIR /app
 
-COPY client_server.py .
+COPY client_server.py /app/
 
-RUN pip install pyOpenSSL requests
+RUN pip install requests pyopenssl
 
 CMD ["python", "client_server.py"]
