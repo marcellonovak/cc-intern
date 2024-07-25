@@ -1,4 +1,4 @@
-version: '3.8'  # Updated to a more recent version
+version: '3.8'
 
 services:
   cert_auth_server:
@@ -25,6 +25,15 @@ services:
     depends_on:
       - cert_auth_server
       - web_server
+      - sidecar_server
+    networks:
+      - mynetwork
+
+  sidecar_server:
+    build:
+      context: ./sidecar_server
+    ports:
+      - "5000:5000"
     networks:
       - mynetwork
 
