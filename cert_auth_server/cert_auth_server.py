@@ -1,43 +1,79 @@
-from flask import Flask, request, send_file
+import os
+import ssl
+from flask import Flask, request, jsonify
 from OpenSSL import crypto
 
 app = Flask(__name__)
 
-@app.route('/')
-def hello():
-    print("Received request from client.")
-    return "Hello from Auth Server!"
+CA_CERT_FILE = '/app/ca.crt'
+CA_KEY_FILE = '/app/ca.key'
 
-@app.route('/sign-csr', methods=['POST'])
-def sign_csr():
-    print("Received CSR signing request from client.")
+def load_ca_cert_and_key():
+    print("Loading CA certificate and key...")
+    try:
+        with open(CA_CERT_FILE, 'rb') as cert_file:
+            ca_cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_file.read())
+        print("CA certificate loaded successfully.")
+    except Exception as e:
+        print(f"Error loading CA certificate: {e}")
+        raise
+
+    try:
+        with open(CA_KEY_FILE, 'rb') as key_file:
+            ca_key = crypto.load_privatekey(crypto.FILETYPE_PEM, key_file.read())
+        print("CA key loaded successfully.")
+    except Exception as e:
+        print(f"Error loading CA key: {e}")
+        raise
+
+    return ca_cert, ca_key
+
+def sign_csr(csr_data):
+    print("Signing CSR...")
+    ca_cert, ca_key = load_ca_cert_and_key()
     
-    csr_file = request.files['csr']
-    csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, csr_file.read())
+    try:
+        csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, csr_data)
+        print("CSR loaded successfully.")
+    except Exception as e:
+        print(f"Error loading CSR: {e}")
+        raise
 
-    # Load CA key and certificate
-    with open('ca.crt', 'rb') as ca_cert_file:
-        ca_cert = crypto.load_certificate(crypto.FILETYPE_PEM, ca_cert_file.read())
-    with open('ca.key', 'rb') as ca_key_file:
-        ca_key = crypto.load_privatekey(crypto.FILETYPE_PEM, ca_key_file.read())
-
-    # Issue signed certificate
     cert = crypto.X509()
+    cert.set_serial_number(1001)
+    cert.gmtime_adj_notBefore(0)
+    cert.gmtime_adj_notAfter(31536000)
+    cert.set_issuer(ca_cert.get_subject())
     cert.set_subject(csr.get_subject())
     cert.set_pubkey(csr.get_pubkey())
-    cert.set_serial_number(1000)
-    cert.gmtime_adj_notBefore(0)
-    cert.gmtime_adj_notAfter(31536000)  # Valid for 1 year
-    cert.set_issuer(ca_cert.get_subject())
     cert.sign(ca_key, 'sha256')
 
-    # Save signed certificate to a file
-    cert_file_name = 'client_signed.crt'
-    with open(cert_file_name, 'wb') as cert_file:
-        cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+    print("CSR signed successfully.")
+    return crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
 
-    print("Signed certificate issued and sent to client.")
-    return send_file(cert_file_name, as_attachment=True)
+@app.route('/sign-csr', methods=['POST'])
+def sign_csr_route():
+    print("Received request for signing CSR.")
+    csr_file = request.files.get('csr')
+    if csr_file:
+        print("CSR file received.")
+        csr_data = csr_file.read()
+        try:
+            signed_cert = sign_csr(csr_data)
+            print("Certificate signed and returned.")
+            return signed_cert, 200, {'Content-Type': 'application/x-pem-file'}
+        except Exception as e:
+            print(f"Error signing CSR: {e}")
+            return jsonify({'error': 'Error signing CSR'}), 500
+    else:
+        print("No CSR file provided in the request.")
+        return jsonify({'error': 'No CSR file provided'}), 400
+
+@app.route('/hello')
+def hello():
+    print("Hello route accessed.")
+    return 'Hello from Certificate Authority Server!'
 
 if __name__ == '__main__':
-    app.run(ssl_context='adhoc', port=4000)
+    print("Starting CA server...")
+    app.run(host='0.0.0.0', port=4000, ssl_context='adhoc')  # Use adhoc context for development

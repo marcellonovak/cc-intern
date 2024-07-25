@@ -1,0 +1,33 @@
+version: '3.8'  # Updated to a more recent version
+
+services:
+  cert_auth_server:
+    build:
+      context: ./cert_auth_server
+    ports:
+      - "4000:4000"
+    networks:
+      - mynetwork
+
+  web_server:
+    build:
+      context: ./web_server
+    ports:
+      - "3000:3000"
+    depends_on:
+      - cert_auth_server
+    networks:
+      - mynetwork
+
+  client_server:
+    build:
+      context: ./client_server
+    depends_on:
+      - cert_auth_server
+      - web_server
+    networks:
+      - mynetwork
+
+networks:
+  mynetwork:
+    driver: bridge
